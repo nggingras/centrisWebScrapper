@@ -1,33 +1,60 @@
-use lettre::transport::smtp::authentication::Credentials; 
-use lettre::{Message, SmtpTransport, Transport}; 
 
-fn main() {
-    send_mail();
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+
+use eframe::egui;
+
+fn main() -> Result<(), eframe::Error> {
+    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Confirm exit",
+        options,
+        Box::new(|_cc| Box::<MyApp>::default()),
+    )
 }
 
-fn send_mail() {
-    let smtp_key: &str = "xsmtpsib-57c2e14769476eb421eaebaa2ecbd50bb06a7846963cc485206dd3e2dd4243a0-E8fvIYU26WPAH1k4";
-    let from_email: &str = "Nicolas_1224@hotmail.com";
-    let host: &str = "smtp-relay.brevo.com";
-    let to_email: &str = "nicolas_1224@hotmail.com";
+#[derive(Default)]
+struct MyApp {
+    show_confirmation_dialog: bool,
+    allowed_to_close: bool,
+}
 
-    let email = Message::builder() 
-    .from(from_email.parse().unwrap())
-    .to(to_email.parse().unwrap())
-    .subject("test email")
-    .body("Hello World".to_string())
-    .unwrap();
+impl eframe::App for MyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Try to close the window");
+        });
 
-    let mailer: SmtpTransport = SmtpTransport::relay(&host)
-        .unwrap()
-        .credentials(Credentials::new(
-            from_email.to_string(),
-            smtp_key.to_string(),
-        ))
-        .build();
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if self.allowed_to_close {
+                // do nothing - we will close
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.show_confirmation_dialog = true;
+            }
+        }
 
-    match mailer.send(&email) {
-        Ok(_) => println!("Email sent successfully!"),
-        Err(e) => panic!("Could not send email: {:?}", e),
+        if self.show_confirmation_dialog {
+            egui::Window::new("Do you want to quit?")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("No").clicked() {
+                            self.show_confirmation_dialog = false;
+                            self.allowed_to_close = false;
+                        }
+
+                        if ui.button("Yes").clicked() {
+                            self.show_confirmation_dialog = false;
+                            self.allowed_to_close = true;
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
+                });
+        }
     }
 }
